@@ -1,255 +1,161 @@
 <!doctype html>
 <html lang="tr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Baby Sound Colors</title>
-  <style>
-    html, body{
-      margin:0;
-      height:100%;
-      overflow:hidden;
-      background:#000;
-      -webkit-tap-highlight-color:transparent;
-      touch-action:none;
-    }
-    #screen{
-      width:100%;
-      height:100%;
-      padding: env(safe-area-inset-top) env(safe-area-inset-right)
-               env(safe-area-inset-bottom) env(safe-area-inset-left);
-      background:#000;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+<!-- iPhone tam ekran (Ana Ekrana Ekle için) -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+<title>Baby Sound Colors</title>
+
+<style>
+html, body{
+  margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:#000;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:none;
+}
+
+/* 🔴 EKRANI TAMAMEN KAPLAR – BOŞLUK YOK */
+#screen{
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  background:#000;
+}
+</style>
 </head>
+
 <body>
-  <div id="screen" aria-hidden="true"></div>
+<div id="screen"></div>
 
-  <script>
-    const PALETTE = [
-      "#A23E48","#F4E285","#A7C6ED","#F5F3F0",
-      "#CF7041","#E5C5BD","#E2A55E","#5E718B","#96AA9A","#B4BFC5",
-      "#F2EEE2","#7EC3CE","#F2D78C","#25767A","#A0A072","#345E4F",
-      "#E9E6DA","#E2A18A","#DDB068","#BCC6AB","#8BA4B5","#896450"
-    ];
+<script>
+/* 🎨 SADECE SENİN SEÇTİĞİN SOFT RENKLER */
+const PALETTE = [
+  "#A23E48","#F4E285","#A7C6ED","#F5F3F0",
+  "#CF7041","#E5C5BD","#E2A55E","#5E718B","#96AA9A","#B4BFC5",
+  "#F2EEE2","#7EC3CE","#F2D78C","#25767A","#A0A072","#345E4F",
+  "#E9E6DA","#E2A18A","#DDB068","#BCC6AB","#8BA4B5","#896450"
+];
 
-    const NOTES = [220, 247, 294, 330, 392, 440]; // A3 B3 D4 E4 G4 A4
+const NOTES = [220, 247, 294, 330, 392, 440];
 
-    const screen = document.getElementById("screen");
-    let lastIndex = -1;
+const screen = document.getElementById("screen");
+let lastColor = -1;
 
-    // --- Audio ---
-    let ctx = null, master = null;
+/* 🔊 SES MOTORU */
+let ctx, master;
 
-    function ensureAudio(){
-      if(!ctx){
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
+function audio(){
+  if(!ctx){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-        const comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = -20;
-        comp.knee.value = 16;
-        comp.ratio.value = 2.6;
-        comp.attack.value = 0.003;
-        comp.release.value = 0.10;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -20;
+    comp.knee.value = 16;
+    comp.ratio.value = 2.6;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.1;
 
-        master = ctx.createGain();
-        master.gain.value = 0.95;
+    master = ctx.createGain();
+    master.gain.value = 0.95;
 
-        master.connect(comp);
-        comp.connect(ctx.destination);
-      }
-      if(ctx.state === "suspended") ctx.resume();
-      return ctx;
-    }
+    master.connect(comp);
+    comp.connect(ctx.destination);
+  }
+  if(ctx.state === "suspended") ctx.resume();
+}
 
-    function hashColor(hex){
-      let h = 0;
-      for(let i=0; i<hex.length; i++) h = (h * 31 + hex.charCodeAt(i)) >>> 0;
-      return h;
-    }
+/* 🔢 RENK → KARAKTER */
+function hash(hex){
+  let h=0;
+  for(let i=0;i<hex.length;i++) h=(h*31+hex.charCodeAt(i))>>>0;
+  return h;
+}
 
-    function pickNextColor(){
-      let i = lastIndex;
-      while(i === lastIndex) i = (Math.random() * PALETTE.length) | 0;
-      lastIndex = i;
-      return PALETTE[i];
-    }
+/* 🎵 NET & PARLAK SES */
+function play(freq, vol, delay=0){
+  audio();
+  const t = ctx.currentTime + delay;
 
-    function vibrateSoft(){
-      navigator.vibrate?.(12);
-    }
+  const hp = ctx.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 320;
 
-    function play(type, freq, intensity, whenSec = 0){
-      const context = ensureAudio();
-      const now = context.currentTime + whenSec;
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 8500;
 
-      // ✅ (1) Daha fazla dip temizliği: 220 -> 320
-      const hp = context.createBiquadFilter();
-      hp.type = "highpass";
-      hp.frequency.setValueAtTime(320, now);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0006, t);
+  g.gain.exponentialRampToValueAtTime(vol, t+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0006, t+0.35);
 
-      // ✅ (3) Parlaklığı biraz yumuşat: 11000 -> 8500
-      const lp = context.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.frequency.setValueAtTime(8500, now);
+  const o = ctx.createOscillator();
+  o.type = "sine";
+  o.frequency.value = freq;
 
-      const g = context.createGain();
-      g.gain.setValueAtTime(0.0007, now);
+  o.connect(hp);
+  hp.connect(lp);
+  lp.connect(g);
+  g.connect(master);
 
-      hp.connect(lp);
-      lp.connect(g);
-      g.connect(master);
+  o.start(t);
+  o.stop(t+0.4);
 
-      const cleanupAt = (t) => {
-        setTimeout(() => {
-          try{ hp.disconnect(); }catch{}
-          try{ lp.disconnect(); }catch{}
-          try{ g.disconnect(); }catch{}
-        }, Math.ceil((t - context.currentTime) * 1000) + 60);
-      };
+  o.onended = ()=>{ o.disconnect(); hp.disconnect(); lp.disconnect(); g.disconnect(); };
+}
 
-      if(type === "bell"){
-        const car = context.createOscillator();
-        const mod = context.createOscillator();
-        const modGain = context.createGain();
+/* ⚡ HIZLI DOKUNMA = ARPEJ */
+const taps=[];
+const WINDOW=520;
+const FAST=3;
+const STEP=0.065;
+const SWING=0.018;
+const ARP=[0, STEP+SWING, STEP*2, STEP*3+SWING];
 
-        car.type = "sine";
-        mod.type = "sine";
+function fastMode(now){
+  while(taps.length && now-taps[0]>WINDOW) taps.shift();
+  return taps.length>=FAST;
+}
 
-        car.frequency.setValueAtTime(freq, now);
-        mod.frequency.setValueAtTime(freq * 2.4, now);
-        modGain.gain.setValueAtTime(freq * 0.35, now);
+function next(){
+  let i=lastColor;
+  while(i===lastColor) i=Math.floor(Math.random()*PALETTE.length);
+  lastColor=i;
 
-        mod.connect(modGain);
-        modGain.connect(car.frequency);
+  const color = PALETTE[i];
+  screen.style.background=color;
 
-        g.gain.exponentialRampToValueAtTime(0.26 * intensity, now + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.55);
+  const h = hash(color);
+  const base = NOTES[h % NOTES.length];
+  const freq = base * Math.pow(2, (((h>>3)%3)-1)*0.5);
+  const vol = 0.08;
 
-        car.connect(hp);
-        car.start(now); mod.start(now);
-        car.stop(now + 0.60); mod.stop(now + 0.60);
+  const now = performance.now();
+  taps.push(now);
 
-        car.onended = () => {
-          car.disconnect(); mod.disconnect(); modGain.disconnect();
-          cleanupAt(now + 0.60);
-        };
-        return;
-      }
+  if(!fastMode(now)){
+    play(freq, vol);
+  }else{
+    [1,1.19,1.5,2].forEach((r,i)=>{
+      play(freq*r, vol*0.9, ARP[i]);
+    });
+  }
 
-      if(type === "marimba"){
-        const o = context.createOscillator();
-        o.type = "triangle";
-        o.frequency.setValueAtTime(freq, now);
-        o.frequency.exponentialRampToValueAtTime(freq * 0.99, now + 0.06);
+  navigator.vibrate?.(12);
+}
 
-        g.gain.exponentialRampToValueAtTime(0.32 * intensity, now + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.22);
-
-        o.connect(hp);
-        o.start(now);
-        o.stop(now + 0.26);
-
-        o.onended = () => { o.disconnect(); cleanupAt(now + 0.26); };
-        return;
-      }
-
-      if(type === "pluck"){
-        const o = context.createOscillator();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(freq, now);
-
-        // filter sweep (lp zaten var)
-        lp.frequency.setValueAtTime(6000, now);
-        lp.frequency.exponentialRampToValueAtTime(1400, now + 0.16);
-
-        g.gain.exponentialRampToValueAtTime(0.20 * intensity, now + 0.006);
-        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.18);
-
-        o.connect(hp);
-        o.start(now);
-        o.stop(now + 0.20);
-
-        o.onended = () => { o.disconnect(); cleanupAt(now + 0.20); };
-        return;
-      }
-
-      // pad
-      {
-        const o1 = context.createOscillator();
-        const o2 = context.createOscillator();
-        o1.type = "sine";
-        o2.type = "sine";
-        o1.frequency.setValueAtTime(freq, now);
-        o2.frequency.setValueAtTime(freq * 1.008, now);
-
-        lp.frequency.setValueAtTime(3200, now);
-
-        g.gain.exponentialRampToValueAtTime(0.11 * intensity, now + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.40);
-
-        o1.connect(hp); o2.connect(hp);
-        o1.start(now); o2.start(now);
-        o1.stop(now + 0.45); o2.stop(now + 0.45);
-
-        o2.onended = () => {
-          o1.disconnect(); o2.disconnect();
-          cleanupAt(now + 0.45);
-        };
-      }
-    }
-
-    // --- Fast taps -> arpej/pattern ---
-    const tapTimes = [];
-    const WINDOW_MS = 520;
-    const FAST_COUNT = 3;
-
-    // ✅ (2) Daha ritmik: STEP 0.075 -> 0.065
-    const STEP = 0.065;
-    const SWING = 0.018;
-    const ARP_DELAYS = [0, STEP + SWING, 2*STEP, 3*STEP + SWING];
-
-    function isFastMode(nowMs){
-      while(tapTimes.length && (nowMs - tapTimes[0] > WINDOW_MS)) tapTimes.shift();
-      return tapTimes.length >= FAST_COUNT;
-    }
-
-    function next(){
-      const hex = pickNextColor();
-      screen.style.background = hex;
-
-      const h = hashColor(hex);
-      const note = NOTES[h % NOTES.length];
-
-      const halfOct = (((h >>> 3) % 3) - 1) * 0.5;
-      const baseFreq = note * Math.pow(2, halfOct);
-
-      const types = ["bell","marimba","pluck","pad"];
-      const type = types[(h >>> 6) % types.length];
-
-      const intensity = 0.92 + ((h >>> 10) % 16) / 100; // 0.92–1.07
-
-      const nowMs = performance.now();
-      tapTimes.push(nowMs);
-
-      if(!isFastMode(nowMs)){
-        play(type, baseFreq, intensity, 0);
-      } else {
-        const ratios = [1.00, 1.189, 1.498, 2.00];
-        for(let i=0; i<ARP_DELAYS.length; i++){
-          play(type, baseFreq * ratios[i], intensity * 0.90, ARP_DELAYS[i]);
-        }
-      }
-
-      vibrateSoft();
-    }
-
-    window.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      next();
-    }, { passive:false });
-  </script>
+window.addEventListener("pointerdown", e=>{
+  e.preventDefault();
+  next();
+},{passive:false});
+</script>
 </body>
 </html>
