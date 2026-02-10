@@ -28,7 +28,6 @@
   <div id="screen" aria-hidden="true"></div>
 
   <script>
-    // ✅ Sadece senin paylaştığın soft palet hex’leri
     const PALETTE = [
       "#A23E48","#F4E285","#A7C6ED","#F5F3F0",
       "#CF7041","#E5C5BD","#E2A55E","#5E718B","#96AA9A","#B4BFC5",
@@ -36,13 +35,12 @@
       "#E9E6DA","#E2A18A","#DDB068","#BCC6AB","#8BA4B5","#896450"
     ];
 
-    // Üst üste “uyumlu” dursun diye basit dizi
-    const NOTES = [196, 220, 247, 294, 330, 392, 440];
+    const NOTES = [220, 247, 294, 330, 392, 440]; // A3 B3 D4 E4 G4 A4
 
     const screen = document.getElementById("screen");
     let lastIndex = -1;
 
-    // --- Audio (tek sefer kurulur) ---
+    // --- Audio ---
     let ctx = null, master = null;
 
     function ensureAudio(){
@@ -50,14 +48,14 @@
         ctx = new (window.AudioContext || window.webkitAudioContext)();
 
         const comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = -18;
-        comp.knee.value = 18;
-        comp.ratio.value = 3.0;
-        comp.attack.value = 0.004;
-        comp.release.value = 0.12;
+        comp.threshold.value = -20;
+        comp.knee.value = 16;
+        comp.ratio.value = 2.6;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.10;
 
         master = ctx.createGain();
-        master.gain.value = 0.9;
+        master.gain.value = 0.95;
 
         master.connect(comp);
         comp.connect(ctx.destination);
@@ -83,26 +81,33 @@
       navigator.vibrate?.(12);
     }
 
-    // --- Enstrümanlar (reverb yok, daha temiz) ---
-    function play(type, freq, intensity, when = 0){
+    function play(type, freq, intensity, whenSec = 0){
       const context = ensureAudio();
-      const now = context.currentTime + when;
+      const now = context.currentTime + whenSec;
 
+      // ✅ (1) Daha fazla dip temizliği: 220 -> 320
+      const hp = context.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.setValueAtTime(320, now);
+
+      // ✅ (3) Parlaklığı biraz yumuşat: 11000 -> 8500
       const lp = context.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.setValueAtTime(6000, now);
+      lp.frequency.setValueAtTime(8500, now);
 
       const g = context.createGain();
-      g.gain.setValueAtTime(0.0008, now);
+      g.gain.setValueAtTime(0.0007, now);
 
+      hp.connect(lp);
       lp.connect(g);
       g.connect(master);
 
       const cleanupAt = (t) => {
         setTimeout(() => {
+          try{ hp.disconnect(); }catch{}
           try{ lp.disconnect(); }catch{}
           try{ g.disconnect(); }catch{}
-        }, Math.ceil((t - context.currentTime) * 1000) + 40);
+        }, Math.ceil((t - context.currentTime) * 1000) + 60);
       };
 
       if(type === "bell"){
@@ -114,24 +119,22 @@
         mod.type = "sine";
 
         car.frequency.setValueAtTime(freq, now);
-        mod.frequency.setValueAtTime(freq * 2.02, now);
-        modGain.gain.setValueAtTime(freq * 0.75, now);
+        mod.frequency.setValueAtTime(freq * 2.4, now);
+        modGain.gain.setValueAtTime(freq * 0.35, now);
 
         mod.connect(modGain);
         modGain.connect(car.frequency);
 
-        lp.frequency.setValueAtTime(7500, now);
+        g.gain.exponentialRampToValueAtTime(0.26 * intensity, now + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.55);
 
-        g.gain.exponentialRampToValueAtTime(0.30 * intensity, now + 0.012);
-        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.70);
-
-        car.connect(lp);
+        car.connect(hp);
         car.start(now); mod.start(now);
-        car.stop(now + 0.75); mod.stop(now + 0.75);
+        car.stop(now + 0.60); mod.stop(now + 0.60);
 
         car.onended = () => {
           car.disconnect(); mod.disconnect(); modGain.disconnect();
-          cleanupAt(now + 0.75);
+          cleanupAt(now + 0.60);
         };
         return;
       }
@@ -140,18 +143,16 @@
         const o = context.createOscillator();
         o.type = "triangle";
         o.frequency.setValueAtTime(freq, now);
-        o.frequency.exponentialRampToValueAtTime(freq * 0.985, now + 0.08);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.99, now + 0.06);
 
-        lp.frequency.setValueAtTime(5200, now);
+        g.gain.exponentialRampToValueAtTime(0.32 * intensity, now + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.22);
 
-        g.gain.exponentialRampToValueAtTime(0.38 * intensity, now + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.30);
-
-        o.connect(lp);
+        o.connect(hp);
         o.start(now);
-        o.stop(now + 0.35);
+        o.stop(now + 0.26);
 
-        o.onended = () => { o.disconnect(); cleanupAt(now + 0.35); };
+        o.onended = () => { o.disconnect(); cleanupAt(now + 0.26); };
         return;
       }
 
@@ -160,72 +161,57 @@
         o.type = "sawtooth";
         o.frequency.setValueAtTime(freq, now);
 
-        lp.frequency.setValueAtTime(2200, now);
-        lp.frequency.exponentialRampToValueAtTime(650, now + 0.20);
+        // filter sweep (lp zaten var)
+        lp.frequency.setValueAtTime(6000, now);
+        lp.frequency.exponentialRampToValueAtTime(1400, now + 0.16);
 
-        g.gain.exponentialRampToValueAtTime(0.24 * intensity, now + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.24);
+        g.gain.exponentialRampToValueAtTime(0.20 * intensity, now + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.18);
 
-        o.connect(lp);
+        o.connect(hp);
         o.start(now);
-        o.stop(now + 0.28);
+        o.stop(now + 0.20);
 
-        o.onended = () => { o.disconnect(); cleanupAt(now + 0.28); };
+        o.onended = () => { o.disconnect(); cleanupAt(now + 0.20); };
         return;
       }
 
-      if(type === "pad"){
+      // pad
+      {
         const o1 = context.createOscillator();
         const o2 = context.createOscillator();
         o1.type = "sine";
         o2.type = "sine";
         o1.frequency.setValueAtTime(freq, now);
-        o2.frequency.setValueAtTime(freq * 1.006, now);
+        o2.frequency.setValueAtTime(freq * 1.008, now);
 
-        lp.frequency.setValueAtTime(1700, now);
+        lp.frequency.setValueAtTime(3200, now);
 
-        g.gain.exponentialRampToValueAtTime(0.14 * intensity, now + 0.03);
-        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.55);
+        g.gain.exponentialRampToValueAtTime(0.11 * intensity, now + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0007, now + 0.40);
 
-        o1.connect(lp); o2.connect(lp);
+        o1.connect(hp); o2.connect(hp);
         o1.start(now); o2.start(now);
-        o1.stop(now + 0.60); o2.stop(now + 0.60);
+        o1.stop(now + 0.45); o2.stop(now + 0.45);
 
         o2.onended = () => {
           o1.disconnect(); o2.disconnect();
-          cleanupAt(now + 0.60);
+          cleanupAt(now + 0.45);
         };
-        return;
-      }
-
-      // kick (default)
-      {
-        const o = context.createOscillator();
-        o.type = "sine";
-        o.frequency.setValueAtTime(140, now);
-        o.frequency.exponentialRampToValueAtTime(55, now + 0.09);
-
-        lp.frequency.setValueAtTime(1200, now);
-
-        g.gain.exponentialRampToValueAtTime(0.46 * intensity, now + 0.006);
-        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.18);
-
-        o.connect(lp);
-        o.start(now);
-        o.stop(now + 0.21);
-
-        o.onended = () => { o.disconnect(); cleanupAt(now + 0.21); };
       }
     }
 
-    // --- Hızlı vuruş algılama -> mini arpej/pattern modu ---
-    const tapTimes = [];              // son vuruş zamanları (ms)
-    const WINDOW_MS = 700;            // “hız” penceresi
-    const FAST_COUNT = 5;             // bu pencere içinde >=5 vuruş => pattern
-    const ARP_DELAYS = [0.00, 0.09, 0.18]; // mini arpej zamanları (sn)
+    // --- Fast taps -> arpej/pattern ---
+    const tapTimes = [];
+    const WINDOW_MS = 520;
+    const FAST_COUNT = 3;
+
+    // ✅ (2) Daha ritmik: STEP 0.075 -> 0.065
+    const STEP = 0.065;
+    const SWING = 0.018;
+    const ARP_DELAYS = [0, STEP + SWING, 2*STEP, 3*STEP + SWING];
 
     function isFastMode(nowMs){
-      // pencere dışını at
       while(tapTimes.length && (nowMs - tapTimes[0] > WINDOW_MS)) tapTimes.shift();
       return tapTimes.length >= FAST_COUNT;
     }
@@ -235,30 +221,25 @@
       screen.style.background = hex;
 
       const h = hashColor(hex);
+      const note = NOTES[h % NOTES.length];
 
-      const baseNote = NOTES[h % NOTES.length];
-      const halfOct = (((h >>> 3) % 3) - 1) * 0.5; // -0.5, 0, +0.5
-      const baseFreq = baseNote * Math.pow(2, halfOct);
+      const halfOct = (((h >>> 3) % 3) - 1) * 0.5;
+      const baseFreq = note * Math.pow(2, halfOct);
 
-      const types = ["bell","marimba","pluck","pad","kick"];
+      const types = ["bell","marimba","pluck","pad"];
       const type = types[(h >>> 6) % types.length];
 
-      const intensity = 0.88 + ((h >>> 10) % 22) / 100; // 0.88–1.10
+      const intensity = 0.92 + ((h >>> 10) % 16) / 100; // 0.92–1.07
 
       const nowMs = performance.now();
       tapTimes.push(nowMs);
 
-      const fast = isFastMode(nowMs);
-
-      if(!fast){
+      if(!isFastMode(nowMs)){
         play(type, baseFreq, intensity, 0);
       } else {
-        // Mini arpej: aynı “karakter” ama 3 nota (root + 3rd + 5th benzeri)
-        // Frekans oranları çok agresif olmasın diye yumuşatıldı
-        const ratios = [1.00, 1.26, 1.50]; // ~maj3, ~5th (yakın)
+        const ratios = [1.00, 1.189, 1.498, 2.00];
         for(let i=0; i<ARP_DELAYS.length; i++){
-          const f = baseFreq * ratios[i];
-          play(type, f, intensity * 0.90, ARP_DELAYS[i]);
+          play(type, baseFreq * ratios[i], intensity * 0.90, ARP_DELAYS[i]);
         }
       }
 
