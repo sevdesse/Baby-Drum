@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Baby Drum</title>
+
+<style>
+html,body{
+  margin:0;
+  height:100%;
+  overflow:hidden;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+  background:#000;
+}
+#screen{
+  height:100%;
+  width:100%;
+}
+</style>
+</head>
+
+<body>
+<div id="screen"></div>
+
+<script>
+// 🌈 Yumuşak ama canlı renk paleti
+const COLORS = [
+  { color:"#FF6F61", freq:220 }, // soft coral
+  { color:"#4D96FF", freq:330 }, // bright blue
+  { color:"#6BCF63", freq:260 }, // fresh green
+  { color:"#FFD93D", freq:440 }, // warm yellow
+  { color:"#FF9F1C", freq:180 }, // orange
+  { color:"#9B5DE5", freq:360 }  // purple
+];
+
+let audioCtx;
+let last = -1;
+const screen = document.getElementById("screen");
+
+// 🔊 Daha net ve parlak davul sesi
+function playDrum(freq){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(audioCtx.state === "suspended") audioCtx.resume();
+
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(freq, now);
+
+  // Parlaklık için high-pass
+  filter.type = "highpass";
+  filter.frequency.value = 180;
+
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(0.6, now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.3);
+}
+
+// 🎲 Rastgele ama aynı renk üst üste gelmez
+function next(){
+  let i;
+  do{
+    i = Math.floor(Math.random() * COLORS.length);
+  } while(i === last);
+  last = i;
+
+  const c = COLORS[i];
+  screen.style.background = c.color;
+  playDrum(c.freq);
+}
+
+// 👆 Dokunma
+addEventListener("pointerdown", e => {
+  e.preventDefault();
+  next();
+}, { passive:false });
+</script>
+</body>
+</html>
