@@ -1,94 +1,274 @@
 <!doctype html>
 <html lang="tr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Baby Drum</title>
-
-<style>
-html,body{
-  margin:0;
-  height:100%;
-  overflow:hidden;
-  touch-action:manipulation;
-  -webkit-tap-highlight-color:transparent;
-  background:#000;
-}
-#screen{
-  height:100%;
-  width:100%;
-}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Baby Sound Colors</title>
+  <style>
+    html, body{
+      margin:0;
+      height:100%;
+      overflow:hidden;
+      background:#000;
+      -webkit-tap-highlight-color:transparent;
+      touch-action:none;
+    }
+    #screen{
+      width:100%;
+      height:100%;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+      background:#000;
+    }
+  </style>
 </head>
-
 <body>
-<div id="screen"></div>
+  <div id="screen" aria-hidden="true"></div>
 
-<script>
-// 🌈 Yumuşak ama canlı renk paleti
-const COLORS = [
-  { color:"#FF6F61", freq:220 }, // soft coral
-  { color:"#4D96FF", freq:330 }, // bright blue
-  { color:"#6BCF63", freq:260 }, // fresh green
-  { color:"#FFD93D", freq:440 }, // warm yellow
-  { color:"#FF9F1C", freq:180 }, // orange
-  { color:"#9B5DE5", freq:360 }  // purple
-];
+  <script>
+    // ✅ Sadece senin paylaştığın soft palet hex’leri
+    const PALETTE = [
+      "#A23E48","#F4E285","#A7C6ED","#F5F3F0",
+      "#CF7041","#E5C5BD","#E2A55E","#5E718B","#96AA9A","#B4BFC5",
+      "#F2EEE2","#7EC3CE","#F2D78C","#25767A","#A0A072","#345E4F",
+      "#E9E6DA","#E2A18A","#DDB068","#BCC6AB","#8BA4B5","#896450"
+    ];
 
-let audioCtx;
-let last = -1;
-const screen = document.getElementById("screen");
+    // Üst üste “uyumlu” dursun diye basit dizi
+    const NOTES = [196, 220, 247, 294, 330, 392, 440];
 
-// 🔊 Daha net ve parlak davul sesi
-function playDrum(freq){
-  if(!audioCtx){
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if(audioCtx.state === "suspended") audioCtx.resume();
+    const screen = document.getElementById("screen");
+    let lastIndex = -1;
 
-  const now = audioCtx.currentTime;
+    // --- Audio (tek sefer kurulur) ---
+    let ctx = null, master = null;
 
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const filter = audioCtx.createBiquadFilter();
+    function ensureAudio(){
+      if(!ctx){
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(freq, now);
+        const comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -18;
+        comp.knee.value = 18;
+        comp.ratio.value = 3.0;
+        comp.attack.value = 0.004;
+        comp.release.value = 0.12;
 
-  // Parlaklık için high-pass
-  filter.type = "highpass";
-  filter.frequency.value = 180;
+        master = ctx.createGain();
+        master.gain.value = 0.9;
 
-  gain.gain.setValueAtTime(0.001, now);
-  gain.gain.exponentialRampToValueAtTime(0.6, now + 0.015);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        master.connect(comp);
+        comp.connect(ctx.destination);
+      }
+      if(ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
 
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
+    function hashColor(hex){
+      let h = 0;
+      for(let i=0; i<hex.length; i++) h = (h * 31 + hex.charCodeAt(i)) >>> 0;
+      return h;
+    }
 
-  osc.start(now);
-  osc.stop(now + 0.3);
-}
+    function pickNextColor(){
+      let i = lastIndex;
+      while(i === lastIndex) i = (Math.random() * PALETTE.length) | 0;
+      lastIndex = i;
+      return PALETTE[i];
+    }
 
-// 🎲 Rastgele ama aynı renk üst üste gelmez
-function next(){
-  let i;
-  do{
-    i = Math.floor(Math.random() * COLORS.length);
-  } while(i === last);
-  last = i;
+    function vibrateSoft(){
+      navigator.vibrate?.(12);
+    }
 
-  const c = COLORS[i];
-  screen.style.background = c.color;
-  playDrum(c.freq);
-}
+    // --- Enstrümanlar (reverb yok, daha temiz) ---
+    function play(type, freq, intensity, when = 0){
+      const context = ensureAudio();
+      const now = context.currentTime + when;
 
-// 👆 Dokunma
-addEventListener("pointerdown", e => {
-  e.preventDefault();
-  next();
-}, { passive:false });
-</script>
+      const lp = context.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.setValueAtTime(6000, now);
+
+      const g = context.createGain();
+      g.gain.setValueAtTime(0.0008, now);
+
+      lp.connect(g);
+      g.connect(master);
+
+      const cleanupAt = (t) => {
+        setTimeout(() => {
+          try{ lp.disconnect(); }catch{}
+          try{ g.disconnect(); }catch{}
+        }, Math.ceil((t - context.currentTime) * 1000) + 40);
+      };
+
+      if(type === "bell"){
+        const car = context.createOscillator();
+        const mod = context.createOscillator();
+        const modGain = context.createGain();
+
+        car.type = "sine";
+        mod.type = "sine";
+
+        car.frequency.setValueAtTime(freq, now);
+        mod.frequency.setValueAtTime(freq * 2.02, now);
+        modGain.gain.setValueAtTime(freq * 0.75, now);
+
+        mod.connect(modGain);
+        modGain.connect(car.frequency);
+
+        lp.frequency.setValueAtTime(7500, now);
+
+        g.gain.exponentialRampToValueAtTime(0.30 * intensity, now + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.70);
+
+        car.connect(lp);
+        car.start(now); mod.start(now);
+        car.stop(now + 0.75); mod.stop(now + 0.75);
+
+        car.onended = () => {
+          car.disconnect(); mod.disconnect(); modGain.disconnect();
+          cleanupAt(now + 0.75);
+        };
+        return;
+      }
+
+      if(type === "marimba"){
+        const o = context.createOscillator();
+        o.type = "triangle";
+        o.frequency.setValueAtTime(freq, now);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.985, now + 0.08);
+
+        lp.frequency.setValueAtTime(5200, now);
+
+        g.gain.exponentialRampToValueAtTime(0.38 * intensity, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.30);
+
+        o.connect(lp);
+        o.start(now);
+        o.stop(now + 0.35);
+
+        o.onended = () => { o.disconnect(); cleanupAt(now + 0.35); };
+        return;
+      }
+
+      if(type === "pluck"){
+        const o = context.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(freq, now);
+
+        lp.frequency.setValueAtTime(2200, now);
+        lp.frequency.exponentialRampToValueAtTime(650, now + 0.20);
+
+        g.gain.exponentialRampToValueAtTime(0.24 * intensity, now + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.24);
+
+        o.connect(lp);
+        o.start(now);
+        o.stop(now + 0.28);
+
+        o.onended = () => { o.disconnect(); cleanupAt(now + 0.28); };
+        return;
+      }
+
+      if(type === "pad"){
+        const o1 = context.createOscillator();
+        const o2 = context.createOscillator();
+        o1.type = "sine";
+        o2.type = "sine";
+        o1.frequency.setValueAtTime(freq, now);
+        o2.frequency.setValueAtTime(freq * 1.006, now);
+
+        lp.frequency.setValueAtTime(1700, now);
+
+        g.gain.exponentialRampToValueAtTime(0.14 * intensity, now + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.55);
+
+        o1.connect(lp); o2.connect(lp);
+        o1.start(now); o2.start(now);
+        o1.stop(now + 0.60); o2.stop(now + 0.60);
+
+        o2.onended = () => {
+          o1.disconnect(); o2.disconnect();
+          cleanupAt(now + 0.60);
+        };
+        return;
+      }
+
+      // kick (default)
+      {
+        const o = context.createOscillator();
+        o.type = "sine";
+        o.frequency.setValueAtTime(140, now);
+        o.frequency.exponentialRampToValueAtTime(55, now + 0.09);
+
+        lp.frequency.setValueAtTime(1200, now);
+
+        g.gain.exponentialRampToValueAtTime(0.46 * intensity, now + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + 0.18);
+
+        o.connect(lp);
+        o.start(now);
+        o.stop(now + 0.21);
+
+        o.onended = () => { o.disconnect(); cleanupAt(now + 0.21); };
+      }
+    }
+
+    // --- Hızlı vuruş algılama -> mini arpej/pattern modu ---
+    const tapTimes = [];              // son vuruş zamanları (ms)
+    const WINDOW_MS = 700;            // “hız” penceresi
+    const FAST_COUNT = 5;             // bu pencere içinde >=5 vuruş => pattern
+    const ARP_DELAYS = [0.00, 0.09, 0.18]; // mini arpej zamanları (sn)
+
+    function isFastMode(nowMs){
+      // pencere dışını at
+      while(tapTimes.length && (nowMs - tapTimes[0] > WINDOW_MS)) tapTimes.shift();
+      return tapTimes.length >= FAST_COUNT;
+    }
+
+    function next(){
+      const hex = pickNextColor();
+      screen.style.background = hex;
+
+      const h = hashColor(hex);
+
+      const baseNote = NOTES[h % NOTES.length];
+      const halfOct = (((h >>> 3) % 3) - 1) * 0.5; // -0.5, 0, +0.5
+      const baseFreq = baseNote * Math.pow(2, halfOct);
+
+      const types = ["bell","marimba","pluck","pad","kick"];
+      const type = types[(h >>> 6) % types.length];
+
+      const intensity = 0.88 + ((h >>> 10) % 22) / 100; // 0.88–1.10
+
+      const nowMs = performance.now();
+      tapTimes.push(nowMs);
+
+      const fast = isFastMode(nowMs);
+
+      if(!fast){
+        play(type, baseFreq, intensity, 0);
+      } else {
+        // Mini arpej: aynı “karakter” ama 3 nota (root + 3rd + 5th benzeri)
+        // Frekans oranları çok agresif olmasın diye yumuşatıldı
+        const ratios = [1.00, 1.26, 1.50]; // ~maj3, ~5th (yakın)
+        for(let i=0; i<ARP_DELAYS.length; i++){
+          const f = baseFreq * ratios[i];
+          play(type, f, intensity * 0.90, ARP_DELAYS[i]);
+        }
+      }
+
+      vibrateSoft();
+    }
+
+    window.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      next();
+    }, { passive:false });
+  </script>
 </body>
 </html>
