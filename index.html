@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Baby Drum</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent;background:#000}
+#s{height:100%;display:flex;align-items:center;justify-content:center;font:800 26px system-ui;color:#fff}
+#h{padding:14px 18px;border-radius:18px;background:rgba(255,255,255,.18)}
+</style>
+</head>
+<body>
+<div id="s"><div id="h">Dokun 👆</div></div>
+<script>
+const P=[
+{c:"#ff0000",t:"Kırmızı",f:180},
+{c:"#2962ff",t:"Mavi",f:220},
+{c:"#ffd600",t:"Sarı",f:260},
+{c:"#00c853",t:"Yeşil",f:200},
+{c:"#ff6d00",t:"Turuncu",f:140},
+];
+let a,last=-1;
+const s=document.getElementById("s"),h=document.getElementById("h");
+function audio(){a??=new (AudioContext||webkitAudioContext);if(a.state==="suspended")a.resume()}
+function play(f){
+audio();
+const o=a.createOscillator(),g=a.createGain();
+o.type="sine";o.frequency.value=f;
+g.gain.setValueAtTime(0.001,a.currentTime);
+g.gain.exponentialRampToValueAtTime(0.6,a.currentTime+0.02);
+g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+0.25);
+o.connect(g);g.connect(a.destination);
+o.start();o.stop(a.currentTime+0.3);
+}
+addEventListener("pointerdown",e=>{
+e.preventDefault();
+let i;do{i=Math.floor(Math.random()*P.length)}while(i===last);last=i;
+const x=P[i];s.style.background=x.c;h.textContent=x.t;play(x.f);
+},{passive:false});
+</script>
+</body>
+</html>
